@@ -1183,18 +1183,38 @@ window.PF_EST_PINS={"E1":[{"n":"趴趴爪PawzZ","b":"E1A01","x":0.29,"y":0.192},
         </div>`).join("")}</div>`);
     $$(".zl-item").forEach(el => el.addEventListener("click", () => openExhibitor(el.dataset.n)));
   }
-  /* 高清地图按需加载：用到时才下载 floormaps.js，加载完自动重绘 */
+  /* 高清地图：页面打开后后台预载（带进度），点进地图前通常已就绪 */
   let floorsReq = false;
   function ensureFloors(cb) {
     if (window.PF_FLOORS) { cb && cb(); return; }
     if (cb) (window.__floorCbs = window.__floorCbs || []).push(cb);
     if (floorsReq) return;
     floorsReq = true;
-    const s = document.createElement("script");
-    s.src = "floormaps.js";
-    s.onload = () => { (window.__floorCbs || []).forEach(f => f()); window.__floorCbs = []; };
-    document.head.appendChild(s);
+    const pill = document.createElement("div");
+    pill.style.cssText = "position:fixed;left:50%;bottom:86px;transform:translateX(-50%);background:rgba(20,16,10,.85);color:#ffd9b0;font-size:12px;padding:8px 16px;border-radius:999px;z-index:99998;pointer-events:none;white-space:nowrap";
+    pill.textContent = "\uD83D\uDC3E \u9AD8\u6E05\u5C55\u4F4D\u56FE\u540E\u53F0\u52A0\u8F7D\u4E2D 0%";
+    document.body.appendChild(pill);
+    const done = () => { pill.remove(); (window.__floorCbs || []).forEach(f => f()); window.__floorCbs = []; };
+    fetch("floormaps.js").then(r => {
+      if (!r.ok || !r.body) throw new Error("bad");
+      const total = +r.headers.get("Content-Length") || 5300000;
+      const rd = r.body.getReader(), dec = new TextDecoder(), chunks = [];
+      let got = 0;
+      const pump = () => rd.read().then(({ done: d, value }) => {
+        if (d) {
+          (0, eval)(chunks.join("") + dec.decode());
+          done();
+          return;
+        }
+        got += value.length;
+        chunks.push(dec.decode(value, { stream: true }));
+        pill.textContent = "\uD83D\uDC3E \u9AD8\u6E05\u5C55\u4F4D\u56FE\u540E\u53F0\u52A0\u8F7D\u4E2D " + Math.min(99, Math.round(got / total * 100)) + "%";
+        pump();
+      });
+      pump();
+    }).catch(() => { pill.textContent = "\u5C55\u4F4D\u56FE\u52A0\u8F7D\u5931\u8D25\uFF0C\u8BF7\u5237\u65B0\u91CD\u8BD5"; setTimeout(() => pill.remove(), 4000); floorsReq = false; });
   }
+  window.addEventListener("load", () => setTimeout(() => ensureFloors(), 600));
   let fz = 1;
   function fmapZoom(z) {
     fz = Math.min(3.2, Math.max(1, z));
